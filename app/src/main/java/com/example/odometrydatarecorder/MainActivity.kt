@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
     private lateinit var cameraHandler: CameraHandler
+    private lateinit var imuHandler: IMUHandler
     private lateinit var textureView: TextureView
 
     // Register for Activity Result to handle permission request
@@ -67,7 +68,7 @@ class MainActivity : ComponentActivity() {
             }
 
             setupCamera()
-
+            setupIMU()
         }
         // cameraHandler.openCamera()
 
@@ -80,6 +81,11 @@ class MainActivity : ComponentActivity() {
         // Initialize the TextureView and CameraHandler
         textureView = TextureView(this)
         cameraHandler = CameraHandler(this, textureView)
+    }
+
+    private fun setupIMU() {
+        // Initialize the IMU Handler (has no visuals)
+        imuHandler = IMUHandler(this)
     }
 
     @Composable
@@ -116,6 +122,7 @@ class MainActivity : ComponentActivity() {
             Button(onClick = {
                 // Your button click logic here
                 cameraHandler.openCamera()
+                imuHandler.start()
                 showTextField = true
             }) {
                 Text("Start Camera")
@@ -144,7 +151,7 @@ class MainActivity : ComponentActivity() {
                  Button(onClick = {
                      val exposureTimeMs = exposureTime.text.toLongOrNull()
                      if (exposureTimeMs != null) {
-                        Log.e("MainActivity", "Got exposure time $exposureTimeMs")
+                        Log.i("MainActivity", "Got exposure time $exposureTimeMs")
                         val clippedExposureTimeMs = exposureTimeMs.coerceIn(1, 500)
                         cameraHandler.setManualExposure(clippedExposureTimeMs * 1_000_000) // Convert ms to ns
                      } else {
@@ -152,7 +159,7 @@ class MainActivity : ComponentActivity() {
                      }
                      val isoSens = isoSensitivity.text.toIntOrNull()
                      if (isoSens != null) {
-                        Log.e("MainActivity", "Got iso sensitivity $isoSens")
+                        Log.i("MainActivity", "Got iso sensitivity $isoSens")
                         cameraHandler.setIsoSensitivity(isoSens)
                      } else {
                          Toast.makeText(context, "Invalid exposure time", Toast.LENGTH_SHORT).show()

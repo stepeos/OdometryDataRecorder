@@ -3,6 +3,7 @@ package com.example.odometrydatarecorder
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,7 +20,9 @@ import android.view.TextureView
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
@@ -86,6 +89,11 @@ class MainActivity : ComponentActivity() {
         val textureView = remember { TextureView(context) }
         val cameraHandler = remember { CameraHandler(context, textureView) }
 
+
+        var showTextField by remember { mutableStateOf(false) }
+        var exposureTime by remember { mutableStateOf(TextFieldValue("")) }
+
+
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -107,9 +115,39 @@ class MainActivity : ComponentActivity() {
             Button(onClick = {
                 // Your button click logic here
                 cameraHandler.openCamera()
+                showTextField = true
             }) {
                 Text("Start Camera")
             }
+
+
+
+            if (showTextField) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextField(
+                    value = exposureTime,
+                    onValueChange = { exposureTime = it },
+                    label = { "Exposure Time (ms)" }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                 Button(onClick = {
+                     val exposureTimeMs = exposureTime.text.toLongOrNull()
+                     if (exposureTimeMs != null) {
+                        Log.e("MainActivity", "Got exposure time $exposureTimeMs")
+                        val clippedExposureTimeMs = exposureTimeMs.coerceIn(1, 500)
+                        cameraHandler.setManualExposure(clippedExposureTimeMs * 1_000_000) // Convert ms to ns
+                         // cameraHandler.openCamera()
+                     } else {
+                         Toast.makeText(context, "Invalid exposure time", Toast.LENGTH_SHORT).show()
+                     }
+                 }) {
+                     Text("Set Exposure Time")
+                 }
+            }
+            
         }
     }
 }

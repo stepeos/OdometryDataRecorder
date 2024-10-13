@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
 
         var showTextField by remember { mutableStateOf(false) }
         var exposureTime by remember { mutableStateOf(TextFieldValue("")) }
+        var isoSensitivity by remember { mutableStateOf(TextFieldValue("")) }
 
 
         Column(
@@ -131,7 +132,14 @@ class MainActivity : ComponentActivity() {
                     label = { "Exposure Time (ms)" }
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                TextField(
+                    value = isoSensitivity,
+                    onValueChange = { isoSensitivity = it },
+                    label = { "ISO Sensitivity ()" }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                  Button(onClick = {
                      val exposureTimeMs = exposureTime.text.toLongOrNull()
@@ -139,12 +147,18 @@ class MainActivity : ComponentActivity() {
                         Log.e("MainActivity", "Got exposure time $exposureTimeMs")
                         val clippedExposureTimeMs = exposureTimeMs.coerceIn(1, 500)
                         cameraHandler.setManualExposure(clippedExposureTimeMs * 1_000_000) // Convert ms to ns
-                         // cameraHandler.openCamera()
+                     } else {
+                         Toast.makeText(context, "Invalid exposure time", Toast.LENGTH_SHORT).show()
+                     }
+                     val isoSens = isoSensitivity.text.toIntOrNull()
+                     if (isoSens != null) {
+                        Log.e("MainActivity", "Got iso sensitivity $isoSens")
+                        cameraHandler.setIsoSensitivity(isoSens)
                      } else {
                          Toast.makeText(context, "Invalid exposure time", Toast.LENGTH_SHORT).show()
                      }
                  }) {
-                     Text("Set Exposure Time")
+                     Text("Set Exposure & ISO Sen.")
                  }
             }
             

@@ -21,6 +21,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
     private var manualExposureTime: Long? = null
+    private var manualIsoSensitivity: Int? = null
 
     // Open the camera
     fun openCamera() {
@@ -94,7 +95,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         {
             builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 1000000L)
         }
-        // set the ISO sensitivity to 1000
+        // set the ISOsensitivity to 1000
         builder.set(CaptureRequest.SENSOR_SENSITIVITY, 1000)
     }
 
@@ -110,6 +111,22 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             } catch (e: CameraAccessException) {
                 Log.e("CameraHandler", "Camera access exception: ${e.message}")
                 Toast.makeText(context, "Failed to set manual exposure", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Set manual ISO sensitivity
+    fun setIsoSensitivity(isoSensitivity: Int) {
+        manualIsoSensitivity = isoSensitivity
+        if (::cameraCaptureSession.isInitialized) {
+            try {
+                val builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+                builder.addTarget(Surface(textureView.surfaceTexture))
+                configureCaptureRequest(builder)
+                cameraCaptureSession.setRepeatingRequest(builder.build(), null, backgroundHandler)
+            } catch (e: CameraAccessException) {
+                Log.e("CameraHandler", "Camera access exception: ${e.message}")
+                Toast.makeText(context, "Failed to set ISO sensitivity", Toast.LENGTH_SHORT).show()
             }
         }
     }

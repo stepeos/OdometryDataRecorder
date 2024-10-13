@@ -1,6 +1,6 @@
 # Odometry Data Recorder
 
-Odometry Data Recorder is a simple Android app designed for recording visual and IMU (Inertial Measurement Unit) data, which can be used for SLAM (Simultaneous Localization and Mapping) algorithms.
+Odometry Data Recorder is a simple Android app designed for recording visual and IMU (Inertial Measurement Unit) data, which can be used for odometry algorithms.
 
 ## Features
 

@@ -67,8 +67,10 @@ class IMUHandler(private val context: Context) : SensorEventListener {
                     accelerometerBuffer.add(SensorData(timestamp, x, y, z))
                     if (accelerometerBuffer.size > 10000) {
                         // copy the
-                        handler.post { writeDataToFile(accelerometerBuffer.toMutableList(),
-                            "accelerometer_data_$accCnt") }
+                        val deepCopy = accelerometerBuffer.toMutableList()
+                        val filename = "accelerometer_data_$accCnt"
+                        handler.post { writeDataToFile(deepCopy,
+                            filename) }
                         accCnt += 1
                         accelerometerBuffer.clear()
                     } else {
@@ -81,8 +83,10 @@ class IMUHandler(private val context: Context) : SensorEventListener {
                     val z = it.values[2]
                     gyroscopeBuffer.add(SensorData(timestamp, x, y, z))
                     if (gyroscopeBuffer.size > 10000) {
-                        handler.post { writeDataToFile(gyroscopeBuffer.toMutableList(),
-                            "gyroscope_data_$gyroCnt") }
+                        val deepCopy = gyroscopeBuffer.toMutableList()
+                        val filename = "gyroscope_data_$gyroCnt"
+                        handler.post { writeDataToFile(deepCopy,
+                            filename) }
                         gyroCnt += 1
                         gyroscopeBuffer.clear()
                     } else {

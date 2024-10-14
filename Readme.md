@@ -11,8 +11,9 @@ Odometry Data Recorder is a simple Android app designed for recording visual and
 
 - [x] Camera Preview
 - [ ] Record visual data using the device's camera.
-- [ ] Record IMU data including accelerometer and gyroscope readings.
-- [ ] Save recorded data for use in SLAM algorithms.
+- [x] Record IMU data including accelerometer and gyroscope readings.
+- [x] Save IMU recorded data to files.
+- [ ] Save Image recorded data to files.
 
 ## Getting Started
 

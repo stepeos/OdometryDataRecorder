@@ -19,11 +19,10 @@ class IMUHandler(private val context: Context) : SensorEventListener {
     private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val gyroscope: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
-    private val accelerometerBuffer: MutableList<MutableList<SensorData>> = mutableListOf(mutableListOf(), mutableListOf())
-    private val gyroscopeBuffer: MutableList<MutableList<SensorData>> = mutableListOf(mutableListOf(), mutableListOf())
-
-    private var currentAccelerometerIndex = 0
-    private var currentGyroscopeIndex = 0
+    private val accelerometerBuffer: MutableList<SensorData> = mutableListOf()
+    private var accCnt = 0
+    private val gyroscopeBuffer: MutableList<SensorData> = mutableListOf()
+    private var gyroCnt = 0
 
     private val handlerThread = HandlerThread("IMUHandlerThread").apply { start() }
     private val handler = Handler(handlerThread.looper)
@@ -31,8 +30,8 @@ class IMUHandler(private val context: Context) : SensorEventListener {
     private val logHandler = Handler()
     private val logRunnable = object : Runnable {
         override fun run() {
-            val accCount = accelerometerBuffer.sumOf { it.size }
-            val gyroCount = gyroscopeBuffer.sumOf { it.size }
+            val accCount = accelerometerBuffer.size
+            val gyroCount = gyroscopeBuffer.size
             Log.i("IMUHandler", "Accelerometer buffer count: $accCount")
             Log.i("IMUHandler", "Gyroscope buffer count: $gyroCount")
             logHandler.postDelayed(this, 1000)
@@ -65,12 +64,13 @@ class IMUHandler(private val context: Context) : SensorEventListener {
                     val x = it.values[0]
                     val y = it.values[1]
                     val z = it.values[2]
-                    val currentBuffer = accelerometerBuffer[currentAccelerometerIndex]
-                    currentBuffer.add(SensorData(timestamp, x, y, z))
-                    if (currentBuffer.size > 100000) {
-                        handler.post { writeDataToFile(currentBuffer, "accelerometer_data") }
-                        currentAccelerometerIndex = (currentAccelerometerIndex + 1) % 2
-                        accelerometerBuffer[currentAccelerometerIndex].clear()
+                    accelerometerBuffer.add(SensorData(timestamp, x, y, z))
+                    if (accelerometerBuffer.size > 10000) {
+                        // copy the
+                        handler.post { writeDataToFile(accelerometerBuffer.toMutableList(),
+                            "accelerometer_data_$accCnt") }
+                        accCnt += 1
+                        accelerometerBuffer.clear()
                     } else {
 
                     }
@@ -79,12 +79,12 @@ class IMUHandler(private val context: Context) : SensorEventListener {
                     val x = it.values[0]
                     val y = it.values[1]
                     val z = it.values[2]
-                    val currentBuffer = gyroscopeBuffer[currentGyroscopeIndex]
-                    currentBuffer.add(SensorData(timestamp, x, y, z))
-                    if (currentBuffer.size > 100000) {
-                        handler.post { writeDataToFile(currentBuffer, "gyroscope_data") }
-                        currentGyroscopeIndex = (currentGyroscopeIndex + 1) % 2
-                        gyroscopeBuffer[currentGyroscopeIndex].clear()
+                    gyroscopeBuffer.add(SensorData(timestamp, x, y, z))
+                    if (gyroscopeBuffer.size > 10000) {
+                        handler.post { writeDataToFile(gyroscopeBuffer.toMutableList(),
+                            "gyroscope_data_$gyroCnt") }
+                        gyroCnt += 1
+                        gyroscopeBuffer.clear()
                     } else {
 
                     }

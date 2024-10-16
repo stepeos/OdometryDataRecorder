@@ -1,25 +1,27 @@
 package com.example.odometrydatarecorder
 
+
+import com.example.odometrydatarecorder.capnp_compiled.OdometryData.CameraData
+import com.example.odometrydatarecorder.capnp_compiled.OdometryData.CameraCapture
+import org.capnproto.StructList
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.SurfaceTexture
-import android.hardware.camera2.*
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.params.MeteringRectangle
-import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
 import android.view.TextureView
-import android.view.View
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 import kotlin.math.max
 
 class CameraHandler(private val context: Context, private val textureView: TextureView) {
@@ -49,6 +51,9 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         }
 
         openCameraById(cameraId ?: "")
+        // INITIALIZE CAPNPROTO MESSAGE
+        val message = org.capnproto.MessageBuilder()
+        val c_cameradata = message.initRoot(CameraData.factory)
     }
 
         // Open the camera by ID and configure capture request

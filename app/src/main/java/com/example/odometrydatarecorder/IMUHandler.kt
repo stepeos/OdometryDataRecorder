@@ -106,7 +106,7 @@ class IMUHandler(private val context: Context) : SensorEventListener {
 
     private fun writeDataToFile(data: MutableList<SensorData>, fileName: String) {
         val tempFile = File(context.cacheDir, "$fileName.txt")
-        FileWriter(tempFile, true).use { writer ->
+        FileWriter(tempFile, false).use { writer ->
             data.forEach { sensorData ->
                 writer.write("${sensorData.timestamp},${sensorData.x},${sensorData.y},${sensorData.z}\n")
             }

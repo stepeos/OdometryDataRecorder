@@ -119,8 +119,8 @@ class MainActivity : ComponentActivity() {
                 factory = { textureView },
                 modifier = Modifier
 //                    .fillMaxWidth()
-                    .width(300.dp)
-                    .height(300.dp) // Adjust height as needed
+                    .fillMaxWidth()
+                    .height(500.dp) // Adjust height as needed
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -176,7 +176,7 @@ class MainActivity : ComponentActivity() {
                         Log.i("MainActivity", "Got iso sensitivity $isoSens")
                         cameraHandler.setIsoSensitivity(isoSens)
                     } else {
-                        Toast.makeText(context, "Invalid exposure time", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Invalid iso sensitivity", Toast.LENGTH_SHORT).show()
                     }
                 }) {
                     Text("Set Exposure & ISO Sen.")

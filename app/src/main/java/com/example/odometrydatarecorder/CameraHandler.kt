@@ -32,6 +32,8 @@ import org.capnproto.StructList
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FileWriter
+import java.io.IOException
+import java.nio.ByteBuffer
 import kotlin.math.max
 
 
@@ -47,8 +49,8 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     private var backgroundThread: HandlerThread? = null
 
     private lateinit var cameraCharacteristics: CameraCharacteristics
-    private var manualExposureTime: Long = 0L
-    private var manualSensitivity: Int = 0
+    private var manualExposureTime: Long = 15L
+    private var manualSensitivity: Int = 1000
 
     // a thread that flushes the data to file in capnp format
     private val writerThread = HandlerThread("CameraSerializerThread").apply { start() }
@@ -85,9 +87,49 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
                 cameraId = camera
                 cameraCharacteristics = characteristics
+                // check here for REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR
+                val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+                // log all autofocus modes that are avaiable
+                val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
+                // Log.i("CameraHandler", "Available AF modes: ${afModes?.joinToString()}")
+
+                // if (capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true) {
+                //     // Manual sensor control is supported
+                //     Log.i("CameraHandler", "Manual sensor control is supported")
+                // }
+                // else {
+                //     Log.i("CameraHandler", "Manual sensor control is not supported")
+                // }
+                // if (capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW) == true) {
+                //     Log.i("CameraHandler", "RAW IS SUPPORTED LETSGOO")
+                // }
+                // else {
+                //     Log.i("CameraHandler", "RAW IS NOT SUPPORTED")
+                // }
+
+
                 break
             }
         }
+
+        for (camera in cameraManager.cameraIdList) {
+            val characteristics = cameraManager.getCameraCharacteristics(camera)
+            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+            if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                cameraId = camera
+                cameraCharacteristics = characteristics
+                Log.i("CameraHandler", "$cameraId resolutions for camera $cameraId")
+                val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                val outputSizes = map?.getOutputSizes(ImageFormat.YUV_420_888)
+                outputSizes?.forEach { size ->
+                    Log.i("CameraHandler", "$cameraId resolution: ${size.width}x${size.height}")
+                }
+
+            }
+        }
+
+
+
         mem = runtime.freeMemory() / 1024 / 1024
         Log.i("CameraHandler", "Starting with $mem free RAM B")
         openCameraById(cameraId ?: "")
@@ -111,17 +153,6 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             try {
                 cameraManager.openCamera(cameraId, stateCallback, backgroundHandler)
-                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
-
-                if (capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW) == true) {
-                    // RAW capture is supported
-                    Log.i("CameraHandler", "RAW IS SUPPORTED LETSGOO")
-                }
-                else {
-                    Log.i("CameraHandler", "RAW IS NOT SUPPORTED")
-                }
-
             } catch (e: CameraAccessException) {
                 Log.e("CameraHandler", "Camera access exception: ${e.message}")
                 Toast.makeText(context, "Camera access failed", Toast.LENGTH_SHORT).show()
@@ -167,67 +198,50 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             // Initialize ImageReader with the actual width and height
             val characteristics = cameraManager.getCameraCharacteristics(cameraDevice.id)
             val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val largest = map?.getOutputSizes(ImageFormat.YUV_420_888)?.maxByOrNull { it.width * it.height }
+            val outputSizes = map?.getOutputSizes(ImageFormat.YUV_420_888)
+            // Select 1920x1080 if available, otherwise select the largest available resolution
+            val selectedSize = outputSizes?.find { it.width == 1920 && it.height == 1080 }
+                ?: outputSizes?.maxByOrNull { it.width * it.height }
             mem = runtime.freeMemory() / 1024 / 1024
             Log.i("CameraHandler", "Starting with $mem free RAM CC")
 
-            largest?.let {
+            selectedSize?.let {
                 initializeImageReader(it.width, it.height)
             }
+
+            
 
             // Create CaptureRequest for preview
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             captureRequestBuilder.addTarget(surface) // Add TextureView surface for preview
             imageReader.surface?.let { captureRequestBuilder.addTarget(it) } // Add ImageReader surface for image capture
 
-            cameraDevice.createCaptureSession(listOf(surface, imageReader.surface), object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    cameraCaptureSession = session
-                    captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
-                    // Autofocus stuff
-                    val sensorArraySize = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
-                    val centerX = sensorArraySize!!.width() / 2
-                    val centerY = sensorArraySize.height() / 2
-                    val halfFocusAreaSize = 100
-                    val focusArea = MeteringRectangle(
-                        max(centerX - halfFocusAreaSize, 0),
-                        max(centerY - halfFocusAreaSize, 0),
-                        halfFocusAreaSize * 2,
-                        halfFocusAreaSize * 2,
-                        MeteringRectangle.METERING_WEIGHT_MAX - 1
-                    )
+            cameraDevice.createCaptureSession(listOf(surface, imageReader.surface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        cameraCaptureSession = session
+                        captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
 
-                    // Set autofocus settings
-                    captureRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(focusArea))
-                    captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                        // set fps to 15
+                        captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, android.util.Range(10, 10))
 
-                    cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
-                }
+                        // Set to autofocus to CameraMetadata.CONTROL_AF_MODE_AUTO
+                        // captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
+
+                        // Set to manual exposure/ISO
+                        captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                        captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, manualExposureTime)
+                        captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, manualSensitivity)
+
+
+                        cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
+                    }
 
                 override fun onConfigureFailed(session: CameraCaptureSession) {
                     Toast.makeText(context, "Camera configuration failed", Toast.LENGTH_SHORT).show()
                 }
             }, backgroundHandler)
-
-            // Set up touch listener for autofocus
-//            textureView.setOnTouchListener { _, _ ->
-//                setAutoFocus()
-//                true
-//            }
-            textureView.setOnTouchListener { _, event ->
-                val focusAreaSize = 200
-                val focusArea = MeteringRectangle(
-                    max(event.x.toInt() - focusAreaSize / 2, 0),
-                    max(event.y.toInt() - focusAreaSize / 2, 0),
-                    focusAreaSize,
-                    focusAreaSize,
-                    MeteringRectangle.METERING_WEIGHT_MAX - 1
-                )
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(focusArea))
-                cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
-
-                true
-            }
 
 
         } catch (e: CameraAccessException) {
@@ -321,7 +335,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
 
 
     // New function to handle image frame availability
-    private fun onImageFrameAvailable(image: Image, parent: String) {
+    private fun onImageFrameAvailable1(image: Image) {
         // Capture image to ByteArray
         val timeStamp: Long = image.timestamp
         // get the height and width
@@ -332,8 +346,8 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             val bytes = ByteArray(buffer.remaining())
             buffer.get(bytes)
             val entry = activeCameraData.entries[imageCounter]
-             entry.timestamp = timeStamp
-             entry.setCapture(bytes)
+            entry.timestamp = timeStamp
+            entry.setCapture(bytes)
             imageCounter += 1
             if (imageCounter >= imageChunkSize) {
                 val filename = "camera_data_${chunkCounter}"
@@ -343,7 +357,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
                 wHandler.post { writeDataToFile(filename) }
             }
             // Optionally, you can log the size of the captured image data
-            Log.d("CameraHandler", "#${imageCounter} $parent Captured image data size: {$width x $height}}, timestamp: $timeStamp")
+            Log.d("CameraHandler", "#${imageCounter} Captured image data size: {$width x $height}}, timestamp: $timeStamp")
 //            val runtime = Runtime.getRuntime()
 //            val mem = runtime.freeMemory() / 1024 / 1024
             // Log.i("CameraHandler", "captured with $mem free RAM")
@@ -351,12 +365,24 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         image.close()
     }
 
-    // check if there is less memory the threshold in MB
-    private fun checkMemory(threshold: Long): Boolean {
-        val runtime = Runtime.getRuntime()
-        val freeMemoryInBytes = runtime.freeMemory()
-        val freeMemoryInMB = freeMemoryInBytes / (1024 * 1024)
-        return freeMemoryInMB < threshold
+
+    private fun onImageFrameAvailable2(image: Image) {
+        val buffer: ByteBuffer = image.planes[0].buffer
+        val bytes = ByteArray(buffer.remaining())
+        buffer.get(bytes)
+
+        // Get the timestamp for the filename
+        val timestamp = System.currentTimeMillis()
+        val file = File(context.cacheDir, "IMG_$timestamp.jpg")
+
+        try {
+            FileOutputStream(file).use { output ->
+                output.write(bytes)
+            }
+            Log.d("CameraCaptureActivity", "Image saved: ${file.absolutePath}")
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
     }
 
     // Method to initialize ImageReader
@@ -365,7 +391,8 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             setOnImageAvailableListener({ reader ->
                 val image = reader.acquireNextImage() // Acquire the next available image
                 image?.let {
-                    onImageFrameAvailable(it, "testA") // Pass the image for processing
+                    onImageFrameAvailable1(it) // Pass the image for processing
+                    // onImageFrameAvailable2(it)
                 }
             }, backgroundHandler)
         }
@@ -396,3 +423,4 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     }
 
 }
+ 

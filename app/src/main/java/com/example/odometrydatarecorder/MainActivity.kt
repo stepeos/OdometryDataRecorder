@@ -45,9 +45,14 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val runtime = Runtime.getRuntime()
+        val mem = runtime.freeMemory() / 1024 / 1024
+        Log.i("MainActivity", "Starting with $mem free RAM")
         super.onCreate(savedInstanceState)
-        setupCamera()
         setupIMU()
+        val mem1 = runtime.freeMemory() / 1024 / 1024
+        Log.i("MainActivity", "Starting with $mem1 free RAM")
+        setupCamera()
 
         setContent {
             MainScreen()
@@ -113,8 +118,9 @@ class MainActivity : ComponentActivity() {
             AndroidView(
                 factory = { textureView },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(400.dp) // Adjust height as needed
+//                    .fillMaxWidth()
+                    .width(300.dp)
+                    .height(300.dp) // Adjust height as needed
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -129,7 +135,7 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(context, "Camera stopped", Toast.LENGTH_SHORT).show()
                 } else {
                     cameraHandler.openCamera()
-                    imuHandler.start()
+                    // imuHandler.start()
                     isCameraStarted = true
                     showTextField = true
                     Toast.makeText(context, "Camera started", Toast.LENGTH_SHORT).show()

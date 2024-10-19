@@ -2,6 +2,7 @@ package com.example.odometrydatarecorder
 
 import com.example.odometrydatarecorder.capnp_compiled.OdometryData.CameraData
 import android.Manifest
+import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraAccessException
@@ -42,7 +43,6 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     private var backgroundHandler: Handler? = null
     private var backgroundThread: HandlerThread? = null
 
-    private val capturedImages: MutableList<CameraCapture.Builder> = mutableListOf()
     private lateinit var cameraCharacteristics: CameraCharacteristics
     private var manualExposureTime: Long = 0L
     private var manualSensitivity: Int = 0
@@ -51,9 +51,19 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     private val writerThread = HandlerThread("CameraSerializerThread").apply { start() }
     private val wHandler = Handler(writerThread.looper)
 
+    // capnproto stuff
+    private val builder1 = MessageBuilder()
+    private val builder2 = MessageBuilder()
+    private var activeBuilder = builder1
+    private var inactiveBuilder = builder2
+    private val cameraData1 = builder1.initRoot(CameraData.factory)
+    private val cameraData2 = builder2.initRoot(CameraData.factory)
+    private var activeCameraData = cameraData1
+    private var inactiveCameraData = cameraData2
+    private var imageCounter = 0
+    private var chunkCounter = 0
+    private val imageChunkSize = 10 // the chunk size when the image buffer is flushed to disk
 
-    // Local variable to store the image data
-    private var imageData: ByteArray? = null
 
     // Initialize ImageReader variable
     private lateinit var imageReader: ImageReader
@@ -61,6 +71,9 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     fun openCamera() {
         cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         var cameraId: String? = null
+        val runtime = Runtime.getRuntime()
+        var mem = runtime.freeMemory() / 1024 / 1024
+        Log.i("CameraHandler", "Starting with $mem free RAM A")
 
         for (camera in cameraManager.cameraIdList) {
             val characteristics = cameraManager.getCameraCharacteristics(camera)
@@ -71,10 +84,22 @@ class CameraHandler(private val context: Context, private val textureView: Textu
                 break
             }
         }
-
+        mem = runtime.freeMemory() / 1024 / 1024
+        Log.i("CameraHandler", "Starting with $mem free RAM B")
         openCameraById(cameraId ?: "")
-//        cameraCharacteristics.
-        // initialize capnproto message
+        // val tempFile = File(context.cacheDir, "$fileName.bin")
+        // lets delete all files we find in cacheDir that end in bin
+        val files = context.cacheDir.listFiles { _, name -> name.endsWith(".bin") }
+        files?.forEach { it.delete() }
+        mem = runtime.freeMemory() / 1024 / 1024
+        Log.i("CameraHandler", "Starting with $mem free RAM C")
+//        val maxHeapSize = runtime.maxMemory() / 1024 / 1024
+//        Log.i("CameraHandler", "Max Heap Size: $maxHeapSize MB")
+        // Initialize the Cap'n Proto message with size 100
+        activeCameraData.initEntries(imageChunkSize)
+        inactiveCameraData.initEntries(imageChunkSize)
+        imageCounter = 0
+
     }
 
     // Open the camera by ID and configure capture request
@@ -82,6 +107,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             try {
                 cameraManager.openCamera(cameraId, stateCallback, backgroundHandler)
+
             } catch (e: CameraAccessException) {
                 Log.e("CameraHandler", "Camera access exception: ${e.message}")
                 Toast.makeText(context, "Camera access failed", Toast.LENGTH_SHORT).show()
@@ -116,13 +142,20 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     private fun createCameraPreviewSession() {
         try {
             val texture = textureView.surfaceTexture
+            val runtime = Runtime.getRuntime()
+            var mem = runtime.freeMemory() / 1024 / 1024
+            Log.i("CameraHandler", "Starting with $mem free RAM AA")
+
             texture?.setDefaultBufferSize(textureView.width, textureView.height)
             val surface = Surface(texture)
-
+            mem = runtime.freeMemory() / 1024 / 1024
+            Log.i("CameraHandler", "Starting with $mem free RAM BB")
             // Initialize ImageReader with the actual width and height
             val characteristics = cameraManager.getCameraCharacteristics(cameraDevice.id)
             val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val largest = map?.getOutputSizes(ImageFormat.YUV_420_888)?.maxByOrNull { it.width * it.height }
+            mem = runtime.freeMemory() / 1024 / 1024
+            Log.i("CameraHandler", "Starting with $mem free RAM CC")
 
             largest?.let {
                 initializeImageReader(it.width, it.height)
@@ -131,8 +164,8 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             // Create CaptureRequest for preview
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             captureRequestBuilder.addTarget(surface) // Add TextureView surface for preview
-            imageReader?.surface?.let { captureRequestBuilder.addTarget(it) } // Add ImageReader surface for image capture
-            
+            imageReader.surface?.let { captureRequestBuilder.addTarget(it) } // Add ImageReader surface for image capture
+
             cameraDevice.createCaptureSession(listOf(surface, imageReader.surface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
                     cameraCaptureSession = session
@@ -218,6 +251,19 @@ class CameraHandler(private val context: Context, private val textureView: Textu
      * #######################################################################
      */
 
+
+    // Function to switch builders
+    private fun switchBuilders() {
+        val tempBuilder = activeBuilder
+        activeBuilder = inactiveBuilder
+        inactiveBuilder = tempBuilder
+
+        val tempCameraData = activeCameraData
+        activeCameraData = inactiveCameraData
+        inactiveCameraData = tempCameraData
+    }
+
+
     // New function to handle image frame availability
     private fun onImageFrameAvailable(image: Image) {
         // Capture image to ByteArray
@@ -229,23 +275,23 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         buffer?.let {
             val bytes = ByteArray(buffer.remaining())
             buffer.get(bytes)
-            imageData = bytes
-
-            // initialize new message
-            val builder  = MessageBuilder();
-            val msg = builder.initRoot(CameraCapture.factory)
-            msg.timestamp = timeStamp
-            msg.setCapture(bytes)
-            //val capturedImage = CapturedImageData(timeStamp, bytes)
-            capturedImages.add(msg)
-            if (capturedImages.size > 100 || checkMemory(100)) {
-                // copy the
-                val deepCopy = capturedImages.toMutableList()
-                val filename = "camera_data_${capturedImages.size}"
-                wHandler.post { writeDataToFile(deepCopy, filename) }
+            val entry = activeCameraData.entries[imageCounter]
+            entry.timestamp = timeStamp
+            entry.setCapture(bytes)
+            imageCounter += 1
+            if (imageCounter >= imageChunkSize) {
+                val filename = "camera_data_${chunkCounter}"
+                switchBuilders()
+                imageCounter = 0
+                chunkCounter += 1
+                // writeDataToFile(filename)
+                wHandler.post { writeDataToFile(filename) }
             }
             // Optionally, you can log the size of the captured image data
-            Log.d("CameraHandler", "#${capturedImages.size} Captured image data size: ${imageData?.size} = {$width x $height}}, timestamp: $timeStamp")
+            Log.d("CameraHandler", "#${imageCounter} Captured image data size: {$width x $height}}, timestamp: $timeStamp")
+            val runtime = Runtime.getRuntime()
+            val mem = runtime.freeMemory() / 1024 / 1024
+            Log.i("CameraHandler", "captured with $mem free RAM")
         }
         image.close()
     }
@@ -295,40 +341,28 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         }
     }
 
-    // Method to write the captured image data to a file in capnp format
-    private fun writeDataToFile(data: MutableList<CameraCapture.Builder>, fileName: String) {
-        Log.i("CameraHandler", "Writing capnproto File!")
+    private fun writeDataToFile(fileName: String) {
+        Log.i("CameraHandlerCapnp", "Writing capnproto File!")
         val tempFile = File(context.cacheDir, "$fileName.bin")
 
-        // Initialize the Cap'n Proto message
-        val builder  = MessageBuilder();
-        val cameraData = builder.initRoot(CameraData.factory)
 
-        // Set the number of entries
-        cameraData?.initEntries(data.size)
-
-        // Set the data into the message entries
-        for ((index, dataEntry) in data.withIndex()) {
-            val entry = cameraData?.entries?.get(index)
-            entry?.setCapture(dataEntry.asReader().capture)
-            entry?.timestamp = dataEntry.asReader().timestamp
-        }
-
-        // Write the Cap'n Proto message to a file
+        // Write Cap'n Proto message to file
         FileOutputStream(tempFile).use { fos ->
             try {
-                // Serialize the message
-                org.capnproto.Serialize.write(fos.channel, builder)
+                org.capnproto.Serialize.write(fos.channel, inactiveBuilder)
             } catch (e: Exception) {
-                Log.e("CameraHandler", "Error writing Cap'n Proto data to file: ${e.message}")
+                Log.e("CameraHandlerCapnp", "Error writing Cap'n Proto data to file: ${e.message}")
             }
         }
+        // reset the builder to free memory
+        inactiveBuilder = MessageBuilder()
+        inactiveCameraData = inactiveBuilder.initRoot(CameraData.factory)
+        inactiveCameraData.initEntries(imageChunkSize)
+        System.gc() // hope for garbage collector to do its thing
 
-        // Get the file size in MB
+        // Log the size of the written file
         val fileSize = tempFile.length() / (1024 * 1024)
-
-        // Log the file path and size
-        Log.d("CameraHandler", "Data written to file: ${tempFile.absolutePath} of size ${fileSize}MB")
+        Log.d("CameraHandlerCapnp", "Data written to file: ${tempFile.absolutePath} of size ${fileSize}MB")
     }
 
 }

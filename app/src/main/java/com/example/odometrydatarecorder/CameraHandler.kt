@@ -335,7 +335,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
 
 
     // New function to handle image frame availability
-    private fun onImageFrameAvailable1(image: Image) {
+    private fun onImageFrameAvailable(image: Image) {
         // Capture image to ByteArray
         val timeStamp: Long = image.timestamp
         // get the height and width
@@ -366,33 +366,13 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     }
 
 
-    private fun onImageFrameAvailable2(image: Image) {
-        val buffer: ByteBuffer = image.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
-
-        // Get the timestamp for the filename
-        val timestamp = System.currentTimeMillis()
-        val file = File(context.cacheDir, "IMG_$timestamp.jpg")
-
-        try {
-            FileOutputStream(file).use { output ->
-                output.write(bytes)
-            }
-            Log.d("CameraCaptureActivity", "Image saved: ${file.absolutePath}")
-        } catch (e: IOException) {
-            e.printStackTrace()
-        }
-    }
-
     // Method to initialize ImageReader
     private fun initializeImageReader(width: Int, height: Int) {
         imageReader = ImageReader.newInstance(width, height, android.graphics.ImageFormat.YUV_420_888, 2).apply {
             setOnImageAvailableListener({ reader ->
                 val image = reader.acquireNextImage() // Acquire the next available image
                 image?.let {
-                    onImageFrameAvailable1(it) // Pass the image for processing
-                    // onImageFrameAvailable2(it)
+                    onImageFrameAvailable(it) // Pass the image for processing
                 }
             }, backgroundHandler)
         }

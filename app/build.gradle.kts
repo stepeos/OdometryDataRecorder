@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.odometrydatarecorder"
-        minSdk = 24
+        minSdk = 33
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -31,12 +31,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+
+
     buildFeatures {
         compose = true
     }
+    buildToolsVersion = "34.0.0"
 }
 
 dependencies {
@@ -57,5 +62,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation("org.capnproto:runtime:0.1.0")
+    // implementation("org.capnproto:runtime:0.1.0") // we ditch this for the self compiled bulk-put runtime
+    implementation(files("libs/runtime-0.1.17-SNAPSHOT.jar"))
+
 }

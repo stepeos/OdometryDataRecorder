@@ -29,7 +29,12 @@ struct IMUData{
 
 struct CameraCapture {
     timestamp @0 :Int64;
-    capture @1 :Data    ;
+    capture @1 :Data;
+    width @2 :Int16;
+    height @3 :Int16;
+    pixelFormat @4 :Text;
+    exposure @5 :Float32; // in seconds
+    isoSensitivity @6 :Int16; // something between 100 and 3500
 }
 
 struct CameraData {

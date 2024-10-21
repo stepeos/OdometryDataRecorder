@@ -34,3 +34,6 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# capnproto jar file
+runtime-0.1.17-SNAPSHOT.jar

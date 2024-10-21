@@ -100,9 +100,6 @@ class CameraHandler(private val context: Context, private val textureView: Textu
                 cameraCharacteristics = characteristics
                 // check here for REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR
                 val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
-                // log all autofocus modes that are avaiable
-                val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
-                // Log.i("CameraHandler", "Available AF modes: ${afModes?.joinToString()}")
 
                 // if (capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true) {
                 //     // Manual sensor control is supported
@@ -117,8 +114,6 @@ class CameraHandler(private val context: Context, private val textureView: Textu
                  else {
                      Log.i("CameraHandler", "RAW IS NOT SUPPORTED")
                  }
-
-
                 break
             }
         }
@@ -193,6 +188,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     }
 
     fun closeCamera() {
+        Log.i("CameraHandler", "Close camera called")
         cameraCaptureSession.close()
         cameraDevice.close()
         stopBackgroundThread()
@@ -213,7 +209,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             // Select if available, otherwise select the largest available resolution
             val reqWidth = 1920
             val reqHeight = 1080
-            val frameRate = 15
+            val frameRate = 20
             val selectedSize = outputSizes?.find { it.width == reqWidth && it.height == reqHeight }
                 ?: outputSizes?.maxByOrNull { it.width * it.height }
             val runtime = Runtime.getRuntime()
@@ -236,21 +232,15 @@ class CameraHandler(private val context: Context, private val textureView: Textu
                         cameraCaptureSession = session
                         captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
 
-                        // TODO: set the CONTROL_AF_TRIGGER
-                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
                         // also the rest https://stackoverflow.com/questions/33151244/implement-tap-to-focus-in-camera2-api
                         // set fps
                         captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, android.util.Range(frameRate, frameRate))
-
-                        // Set to autofocus to CameraMetadata.CONTROL_AF_MODE_AUTO
-                        // captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
 
                         // Set to manual exposure/ISO
                         // captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                         // captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, manualExposureTime)
                         // captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, manualSensitivity)
-                        captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                        // captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
 
                         cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), createCaptureCallback(), backgroundHandler)
                     }
@@ -290,33 +280,12 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     }
 
 
-    private fun setAutoFocus() {
-        try {
-
-            val sensorArraySize = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
-            val centerX = sensorArraySize!!.width() / 2
-            val centerY = sensorArraySize.height() / 2
-            val halfFocusAreaSize = 100
-            val focusArea = MeteringRectangle(
-                max(centerX - halfFocusAreaSize, 0),
-                max(centerY - halfFocusAreaSize, 0),
-                halfFocusAreaSize * 2,
-                halfFocusAreaSize * 2,
-                MeteringRectangle.METERING_WEIGHT_MAX - 1
-            )
-            // Set autofocus settings
-            captureRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(focusArea))
-            captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
-        } catch (e: CameraAccessException) {
-            Log.e("CameraHandler", "Failed to set auto focus: ${e.message}")
-        }
-    }
 
     fun setManualExposure(exposureTime: Long) {
         manualExposureTime = exposureTime
         if (::cameraCaptureSession.isInitialized) {
             try {
+                captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
                 captureRequestBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureTime)
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                 cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
@@ -331,7 +300,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         manualSensitivity = sensitivity
         if (::cameraCaptureSession.isInitialized) {
             try {
-
+                captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
                 val sensitivityRange = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
                 val minISO = sensitivityRange?.lower ?: 100 // Fallback to 100 if null
                 val maxISO = sensitivityRange?.upper ?: 3200 // Fallback to 3200 if null
@@ -534,11 +503,6 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             Log.e("CameraHandlerCapnp", "Failed to move zip file: ${zipFile.absolutePath}")
         }
 
-//        var files = context.cacheDir.listFiles { _, name -> name.endsWith(".bin") }
-//        files?.forEach { it.delete() }
-//
-//        files = context.filesDir.listFiles { _, name -> name.endsWith(".zip") }
-//        files?.forEach { it.delete() }
 
     }
 

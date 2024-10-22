@@ -27,14 +27,22 @@ struct IMUData{
     entries @0 :List(IMUEntry);
 }
 
+struct ImagePlane{
+    capture @0 :Data;
+    rowStride @1 :Int16;
+    pixelStride @2 :Int16;
+}
+
 struct CameraCapture {
     timestamp @0 :Int64;
-    capture @1 :Data;
+    captureData @1 :List(ImagePlane);
     width @2 :Int16;
     height @3 :Int16;
     pixelFormat @4 :Text;
-    exposure @5 :Float32; // in seconds
-    isoSensitivity @6 :Int16; // something between 100 and 3500
+    # in seconds
+    exposureTime @5 :Float32;
+    # some value between 100 and 6000
+    isoSensitivity @6 :Int16;
 }
 
 struct CameraData {

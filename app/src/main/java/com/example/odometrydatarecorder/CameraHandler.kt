@@ -47,8 +47,11 @@ import kotlin.math.max
 
 
 
-// class to store camera configuration such as height width, image format 
-
+// class to store meta info about the image exposure, iso sensitivity
+class ImgMeta {
+    var iso: Short = 0
+    var exposureTime: Float = 0.0F
+}
 
 class CameraHandler(private val context: Context, private val textureView: TextureView) {
     private lateinit var cameraManager: CameraManager
@@ -78,6 +81,11 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     private var imageCounter = 0
     private var chunkCounter = 0
     private val imageChunkSize = 10 // the chunk size when the image buffer is flushed to disk
+    // a mutable map with Long as key and array as value
+    private val metaBuffer1 = mutableMapOf<Long, ImgMeta>()
+    private val metaBuffer2 = mutableMapOf<Long, ImgMeta>()
+    private var activeMetaBuffer = metaBuffer1
+    private var inactiveMetaBuffer = metaBuffer2
 
     private var imgFormat = ImageFormat.YUV_420_888
     // private var imgFormat = PixelFormat.RGB_888
@@ -321,10 +329,6 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         }
     }
 
-    private fun startBackgroundThread() {
-        backgroundThread = HandlerThread("CameraBackground").also { it.start() }
-        backgroundHandler = Handler(backgroundThread!!.looper)
-    }
 
     private fun stopBackgroundThread() {
         backgroundThread?.quitSafely()
@@ -353,46 +357,18 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         val tempCameraData = activeCameraData
         activeCameraData = inactiveCameraData
         inactiveCameraData = tempCameraData
+
+
+        // switch activeMetaBuffer
+        val tempMetaBuffer = activeMetaBuffer
+        activeMetaBuffer = inactiveMetaBuffer
+        inactiveMetaBuffer = tempMetaBuffer
     }
 
 
     // New function to handle image frame availability
     private fun onImageFrameAvailable(image: Image) {
-        // Capture image to ByteArray
-        val timeStamp: Long = image.timestamp
-        // get the height and width
-        val width = image.width
-        val height = image.height
-        val ySize = width * height
-
-//        val uvSize = (width / 2) * (height / 2) // U or V plane size (quarter resolution)
-//        val totalSize = ySize + 2 * uvSize // Total size for YUV_420_888 data
-        val totalSize = ySize
-
-        // Allocate a single byte array to hold Y, U, and V planes
-        val yuvBytes = ByteArray(totalSize)
-
-        // TODO: stride and so on from https://developer.android.com/reference/android/media/Image.Plane
-        // Get each plane's buffer
-        val yPlane = image.planes[0].buffer // Y (luminance)
-//        val uPlane = image.planes[1].buffer // U (chrominance)
-//        val vPlane = image.planes[2].buffer // V (chrominance)
-
-        // Copy Y plane data directly into the yuvBytes array at position 0
-        yPlane.get(yuvBytes, 0, ySize)
-
-        // Copy U plane data directly into the yuvBytes array after Y plane
-//        uPlane.get(yuvBytes, ySize, uvSize)
-
-        // Copy V plane data directly into the yuvBytes array after Y and U planes
-//        vPlane.get(yuvBytes, ySize + uvSize, uvSize)
-
-        val entry = activeCameraData.entries[imageCounter]
-        entry.timestamp = timeStamp
-        entry.setCapture(yuvBytes)
-
-        imageCounter += 1
-
+        // do it at the beginning so that the write to file is certainly available
         if (imageCounter >= imageChunkSize) {
             val filename = "camera_data_${chunkCounter}"
             switchBuilders()
@@ -400,9 +376,26 @@ class CameraHandler(private val context: Context, private val textureView: Textu
             chunkCounter += 1
             wHandler.post { writeDataToFile(filename) }
         }
-        // Optionally, you can log the size of the captured image data
-        Log.d("CameraHandler", "#${imageCounter} Captured image data size: {$width x $height}}, timestamp: $timeStamp")
+        // Capture image to ByteArray
+        val timeStamp: Long = image.timestamp
+        // get the height and width
+        val width = image.width
+        val height = image.height
+        val entry = activeCameraData.entries[imageCounter]
 
+        entry.initCaptureData(3)
+        for ((index, value) in image.planes.withIndex()) {
+            val planeBuf = image.planes[index].buffer
+            val bytes = ByteArray(planeBuf.remaining())
+            planeBuf.get(bytes)
+            entry.captureData[index].setCapture(bytes)
+            entry.captureData[index].pixelStride = value.pixelStride.toShort()
+            entry.captureData[index].rowStride = value.rowStride.toShort()
+        }
+        entry.timestamp = timeStamp
+        entry.setPixelFormat("YUV_420_888")
+        imageCounter += 1
+        Log.d("CameraHandler", "#${imageCounter} Captured image data size: {$width x $height}}, timestamp: $timeStamp")
         image.close()
     }
 
@@ -411,9 +404,11 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         val timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: 0L  // Get frame timestamp
         val iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: 0  // Get ISO level
         val exposureTime = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L  // Get exposure time
-        // TODO: add metadata to capnproto message
-        // Log the metadata or process as needed
-        Log.d("CaptureMetadata", "Timestamp: $timestamp, ISO: $iso, Exposure Time: $exposureTime")
+        val nExposureTime = exposureTime * 1e-9 // in nanoseconds
+        val metadata = ImgMeta()
+        metadata.iso = iso.toShort()
+        metadata.exposureTime = nExposureTime.toFloat()
+        activeMetaBuffer.set(timestamp, metadata)
     }
 
 
@@ -432,7 +427,11 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     private fun writeDataToFile(fileName: String) {
         Log.i("CameraHandlerCapnp", "Writing capnproto File!")
         val tempFile = File(context.cacheDir, "$fileName.bin")
-
+        for (entry in inactiveCameraData.entries) {
+            val timestamp = entry.timestamp
+            entry.isoSensitivity = inactiveMetaBuffer[timestamp]?.iso ?: 0
+            entry.exposureTime = inactiveMetaBuffer[timestamp]?.exposureTime ?: 0.0f
+        }
 
         // Write Cap'n Proto message to file
         FileOutputStream(tempFile).use { fos ->
@@ -446,6 +445,9 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         inactiveBuilder = MessageBuilder()
         inactiveCameraData = inactiveBuilder.initRoot(CameraData.factory)
         inactiveCameraData.initEntries(imageChunkSize)
+        // reset the inactive builder
+        inactiveMetaBuffer.clear()
+
         System.gc() // hope for garbage collector to do its thing
 
         // Log the size of the written file
@@ -455,12 +457,17 @@ class CameraHandler(private val context: Context, private val textureView: Textu
 
     private fun zipBinFiles(): File? {
         val cacheDir = context.cacheDir
-        val zipFile = File(cacheDir, "data.zip")
+        val zipFile = File(cacheDir, "camera_data.zip")
 
         try {
             ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zos ->
                 cacheDir.listFiles()?.forEach { file ->
-                    if (file.isFile && file.name.endsWith(".bin")) {
+                    val bCond = file.name.startsWith("camera_data")
+                    val eCond = file.name.endsWith(".bin")
+                    if (file.isFile && bCond && eCond) {
+                        // print file size
+                        val fileSize = file.length() / (1024 * 1024)
+                        Log.i("CameraHandlerCapnp", "Adding file to zip: ${file.name} of size ${fileSize}MB")
                         FileInputStream(file).use { fis ->
                             BufferedInputStream(fis).use { bis ->
                                 val zipEntry = ZipEntry(file.name)
@@ -494,10 +501,14 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         val filesDir = context.filesDir
         val zipFile = zipBinFiles() ?: return
         val newFile = File(filesDir, zipFile.name)
+        // remove newFIle if it exists
+        if (newFile.exists()) {
+            newFile.delete()
+        }
 
         if (zipFile.renameTo(newFile)) {
             Log.i("CameraHandlerCapnp", "Moved zip file to: ${newFile.absolutePath}")
-            shareFile(newFile)
+            // shareFile(newFile)
             
         } else {
             Log.e("CameraHandlerCapnp", "Failed to move zip file: ${zipFile.absolutePath}")

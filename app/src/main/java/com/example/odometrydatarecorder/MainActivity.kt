@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(context, "Camera stopped", Toast.LENGTH_SHORT).show()
                 } else {
                     cameraHandler.openCamera()
-                    // imuHandler.start()
+                    imuHandler.start()
                     isCameraStarted = true
                     showTextField = true
                     Toast.makeText(context, "Camera started", Toast.LENGTH_SHORT).show()

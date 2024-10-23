@@ -2,12 +2,9 @@ package com.example.odometrydatarecorder
 
 import com.example.odometrydatarecorder.capnp_compiled.OdometryData.CameraData
 import android.Manifest
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.PixelFormat
-import android.media.MediaRecorder
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -17,7 +14,6 @@ import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
-import android.hardware.camera2.params.MeteringRectangle
 import android.media.Image
 import android.media.ImageReader
 import android.os.Handler
@@ -28,23 +24,16 @@ import android.view.TextureView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.example.odometrydatarecorder.capnp_compiled.OdometryData.CameraCapture
-import com.google.ar.core.Camera
 import com.google.ar.core.ImageFormat
 import org.capnproto.MessageBuilder
-import org.capnproto.StructList
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.FileWriter
 import java.io.IOException
-import java.nio.ByteBuffer
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import kotlin.math.max
-
 
 
 // class to store meta info about the image exposure, iso sensitivity
@@ -54,6 +43,8 @@ class ImgMeta {
 }
 
 class CameraHandler(private val context: Context, private val textureView: TextureView) {
+    private var recordingUUID = ""
+    private var binDir = File(context.cacheDir, recordingUUID)
     private lateinit var cameraManager: CameraManager
     private lateinit var cameraDevice: CameraDevice
     private lateinit var cameraCaptureSession: CameraCaptureSession
@@ -93,7 +84,15 @@ class CameraHandler(private val context: Context, private val textureView: Textu
     // Initialize ImageReader variable
     private lateinit var imageReader: ImageReader
 
-    fun openCamera() {
+    fun startRecording(uuid: String) {
+        recordingUUID = uuid
+
+        binDir = File(context.cacheDir, uuid)
+        if (binDir.exists()) {
+            binDir.deleteRecursively()
+        }
+        binDir.mkdir()
+
         cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         var cameraId: String? = null
         val runtime = Runtime.getRuntime()
@@ -195,13 +194,12 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         }
     }
 
-    fun closeCamera() {
+    fun stopRecording() {
         Log.i("CameraHandler", "Close camera called")
         cameraCaptureSession.close()
         cameraDevice.close()
         stopBackgroundThread()
         imageReader.close()
-        wHandler.post{ moveFilesToAppFolder() }
     }
 
     private fun createCameraPreviewSession() {
@@ -426,7 +424,7 @@ class CameraHandler(private val context: Context, private val textureView: Textu
 
     private fun writeDataToFile(fileName: String) {
         Log.i("CameraHandlerCapnp", "Writing capnproto File!")
-        val tempFile = File(context.cacheDir, "$fileName.bin")
+        val tempFile = File(binDir, "$fileName.bin")
         for (entry in inactiveCameraData.entries) {
             val timestamp = entry.timestamp
             entry.isoSensitivity = inactiveMetaBuffer[timestamp]?.iso ?: 0
@@ -453,68 +451,6 @@ class CameraHandler(private val context: Context, private val textureView: Textu
         // Log the size of the written file
         val fileSize = tempFile.length() / (1024 * 1024)
         Log.d("CameraHandlerCapnp", "Data written to file: ${tempFile.absolutePath} of size ${fileSize}MB")
-    }
-
-    private fun zipBinFiles(): File? {
-        val cacheDir = context.cacheDir
-        val zipFile = File(cacheDir, "camera_data.zip")
-
-        try {
-            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zos ->
-                cacheDir.listFiles()?.forEach { file ->
-                    val bCond = file.name.startsWith("camera_data")
-                    val eCond = file.name.endsWith(".bin")
-                    if (file.isFile && bCond && eCond) {
-                        // print file size
-                        val fileSize = file.length() / (1024 * 1024)
-                        Log.i("CameraHandlerCapnp", "Adding file to zip: ${file.name} of size ${fileSize}MB")
-                        FileInputStream(file).use { fis ->
-                            BufferedInputStream(fis).use { bis ->
-                                val zipEntry = ZipEntry(file.name)
-                                zos.putNextEntry(zipEntry)
-                                bis.copyTo(zos, 1024)
-                                zos.closeEntry()
-                            }
-                        }
-                    }
-                }
-            }
-            Log.i("CameraHandlerCapnp", "Created zip file: ${zipFile.absolutePath}")
-            return zipFile
-        } catch (e: IOException) {
-            Log.e("CameraHandlerCapnp", "Error creating zip file: ${e.message}")
-            return null
-        }
-    }
-
-    private fun shareFile(file: File) {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/zip"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(shareIntent, "Share file using"))
-    }
-
-    private fun moveFilesToAppFolder() {
-        val filesDir = context.filesDir
-        val zipFile = zipBinFiles() ?: return
-        val newFile = File(filesDir, zipFile.name)
-        // remove newFIle if it exists
-        if (newFile.exists()) {
-            newFile.delete()
-        }
-
-        if (zipFile.renameTo(newFile)) {
-            Log.i("CameraHandlerCapnp", "Moved zip file to: ${newFile.absolutePath}")
-            // shareFile(newFile)
-            
-        } else {
-            Log.e("CameraHandlerCapnp", "Failed to move zip file: ${zipFile.absolutePath}")
-        }
-
-
     }
 
 }

@@ -59,6 +59,8 @@ class IMUHandler(private val context: Context) : SensorEventListener {
 
     private val zipHandlerThread = HandlerThread("IMUZipThread").apply { start() }
     private val zhandler = Handler(zipHandlerThread.looper)
+    private var recordingUUID = ""
+    private var binDir = File(context.cacheDir, recordingUUID)
 
 
     // Function to switch builders
@@ -88,7 +90,15 @@ class IMUHandler(private val context: Context) : SensorEventListener {
     }
 
     // Start listening to IMU sensors
-    fun start() {
+    fun start(uuid :String) {
+        recordingUUID = uuid
+        // in context.cacheDir, if the directory does not exist, it will be created
+        binDir = File(context.cacheDir, uuid)
+        if (binDir.exists()) {
+            binDir.deleteRecursively()
+        }
+        binDir.mkdir()
+
         accelerometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST)
         }
@@ -105,7 +115,6 @@ class IMUHandler(private val context: Context) : SensorEventListener {
         gyrChunkCounter = 0
         accEntryCounter = 0
         gyrEntryCounter = 0
-
     }
 
     // Stop listening to IMU sensors
@@ -117,7 +126,6 @@ class IMUHandler(private val context: Context) : SensorEventListener {
             writeGyrDataToFile(filename)
             filename = "acc_data_$accChunkCounter"
             writeAccDataToFile(filename)
-            zipBinFiles()
         }
     }
 
@@ -199,7 +207,7 @@ class IMUHandler(private val context: Context) : SensorEventListener {
     }
 
     private fun writeGyrDataToFile(fileName: String) {
-        val tempFile = File(context.cacheDir, "$fileName.bin")
+        val tempFile = File(binDir, "$fileName.bin")
 
         // Write Cap'n Proto message to file
         FileOutputStream(tempFile).use { fos ->
@@ -221,38 +229,4 @@ class IMUHandler(private val context: Context) : SensorEventListener {
         val fileSize = tempFile.length() / (1024 * 1024)
         Log.d("IMUHandler", "Data written to file: ${tempFile.absolutePath} of size ${fileSize}MB")
     }
-
-    private fun zipBinFiles(): File? {
-        val cacheDir = context.cacheDir
-        val zipFile = File(cacheDir, "IMUdata.zip")
-
-        try {
-            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zos ->
-                cacheDir.listFiles()?.forEach { file ->
-                    var bCond = file.name.startsWith("gyro_data")
-                    bCond = bCond || file.name.startsWith("acc_data")
-                    val eCond = file.name.endsWith(".bin")
-                    if (file.isFile && bCond && eCond) {
-                        // print file size
-                        val fileSize = file.length() / (1024 * 1024)
-                        Log.i("IMUHandler", "Adding file to zip: ${file.name} of size ${fileSize}MB")
-                        FileInputStream(file).use { fis ->
-                            BufferedInputStream(fis).use { bis ->
-                                val zipEntry = ZipEntry(file.name)
-                                zos.putNextEntry(zipEntry)
-                                bis.copyTo(zos, 1024)
-                                zos.closeEntry()
-                            }
-                        }
-                    }
-                }
-            }
-            Log.i("IMUHandler", "Created zip file: ${zipFile.absolutePath}")
-            return zipFile
-        } catch (e: IOException) {
-            Log.e("IMUHandler", "Error creating zip file: ${e.message}")
-            return null
-        }
-    }
-
 }

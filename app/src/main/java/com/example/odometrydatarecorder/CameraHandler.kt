@@ -366,6 +366,13 @@ class CameraHandler(private val context: Context, private val textureView: Textu
 
     // New function to handle image frame availability
     private fun onImageFrameAvailable(image: Image) {
+        if (imageCounter == 0 && chunkCounter == 0) {
+            // read SENSOR_INFO_TIMESTAMP_SOURCE and log it to console
+            // https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
+            // if this does not evaluate to 1, then the clock base is not the same as the clockbase of the IMU -> BAD
+            val timestampSource = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE)
+            Log.d("CameraHandler", "Timestamp source: $timestampSource")
+        }
         // do it at the beginning so that the write to file is certainly available
         if (imageCounter >= imageChunkSize) {
             val filename = "camera_data_${chunkCounter}"

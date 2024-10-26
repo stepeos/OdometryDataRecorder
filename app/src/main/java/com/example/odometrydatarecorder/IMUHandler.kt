@@ -120,13 +120,13 @@ class IMUHandler(private val context: Context) : SensorEventListener {
     // Stop listening to IMU sensors
     fun stop() {
         sensorManager.unregisterListener(this)
-        writerHandlerThread.quitSafely()
         zhandler.post {
             var filename = "gyro_data_$gyrChunkCounter"
             writeGyrDataToFile(filename)
             filename = "acc_data_$accChunkCounter"
             writeAccDataToFile(filename)
         }
+        writerHandlerThread.quitSafely()
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -183,7 +183,7 @@ class IMUHandler(private val context: Context) : SensorEventListener {
     // literally no way to avoid code duplication here, i hate kotlin, cannot
     // pass members by reference
     private fun writeAccDataToFile(fileName: String) {
-        val tempFile = File(context.cacheDir, "$fileName.bin")
+        val tempFile = File(binDir, "$fileName.bin")
 
         // Write Cap'n Proto message to file
         FileOutputStream(tempFile).use { fos ->

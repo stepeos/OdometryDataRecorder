@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
         val mem1 = runtime.freeMemory() / 1024 / 1024
         Log.i("MainActivity", "Starting with $mem1 free RAM")
         setupCamera()
+        this.cacheDir.listFiles()
 
         setContent {
             MainScreen()
@@ -145,6 +146,7 @@ class MainActivity : ComponentActivity() {
                         cameraHandler.stopRecording()
                         imuHandler.stop()
                         zipBinFiles()
+                        shareFile(File(filesDir, "recording_$currentRecordingUUID.zip"))
                     }
                     isCameraStarted = false
                     showTextField = false

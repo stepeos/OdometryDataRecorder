@@ -10,10 +10,11 @@ Odometry Data Recorder is a simple Android app designed for recording visual and
 
 
 - [x] Camera Preview
-- [ ] Record visual data using the device's camera.
-- [x] Record IMU data including accelerometer and gyroscope readings.
-- [x] Save IMU recorded data to files.
-- [ ] Save Image recorded data to files.
+- [x] Record visual data using the device's camera. -> Done, stored in YUV format from camera2 api
+- [x] Record IMU data including accelerometer and gyroscope readings. -> done with android interface
+- [x] Save IMU recorded data to files. -> done, serialized with capnproto
+- [x] Save Image recorded data to files with timestamp, exposure time and iso sensitivity for each frame -> done, serialized with capnproto
+- [x] optionally hardlock exposure time and ISO sensitivity (for calibration)
 
 ## Getting Started
 
